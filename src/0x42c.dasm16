@@ -1,0 +1,230 @@
+.org 0x1000
+
+SET PC, boot
+
+; 0x42c jumptable
+:os_enterdone               ; 0x1002
+SET PC, enterdone
+:os_input                   ; 0x1004
+DAT 0x6000
+
+; Kernel jump table defs
+:kern_return dat 0x002
+:kern_strcmp dat 0x003
+:kern_startswith dat 0x005
+:kern_strlen dat 0x007
+:kern_strcat dat 0x009
+:kern_print dat 0x00B
+:kern_printnl dat 0x00D
+:kern_printchar dat 0x00F
+:kern_newline dat 0x011
+:kern_scroll dat 0x013
+:kern_clearscr dat 0x015
+:kern_vidmem dat 0x017
+:kern_backspace dat 0x018
+:kern_memcpy dat 0x01A
+
+
+; string definitions (currently using C-style strings)
+:version dat "0x42c v.0.1 128K MEM READY", 0
+:inputc dat "> ", 0
+
+; commands
+:reddit dat "reddit", 0
+:date dat "date", 0
+:clean dat "clear", 0
+:vers dat "version", 0
+:echo dat "echo", 0
+:open dat "open", 0
+
+; outputs
+:redditoutput dat "Reddit, the frontpage of the internet.", 0
+:dateoutput dat "00:00:00 UTC on 1 January 1970", 0
+:unrecognized dat "Unrecognized command '", 0
+:unrecognizedEnd dat "'.", 0
+
+:inputbuffer dat 0x6000
+
+:boot
+
+:main
+    set x, 0xDEAD
+	set a, version
+	jsr [kern_printnl]	  ; kern_printnl(version)
+	jsr reset
+
+:inputready
+	set a, inputc
+	jsr [kern_print]		; kern_printnl(input)
+
+    set pc, kbloop
+
+:kbloop
+	ife [0x9000], 0   ; if there's no input...
+		set pc, kbloop
+	ife [0x9000], 0xA ; enter
+		set pc, enteredcommand
+	ife [0x9000], 0x8 ; backspace
+		set pc, backspace
+
+	set a, [0x9000]
+	jsr [kern_printchar]	 ; kern_printchar([0x9000])
+
+    set a, [inputbuffer]
+	set b, [0x9000]
+	jsr [kern_strcat]		; kern_strcat([0x1337], [0x9000])
+	add [inputbuffer], 1
+
+	set [0x9000], 0
+
+	set pc, kbloop
+
+:backspace
+	set a, [0x1335]	; Set a to current pos
+	sub a, 2		; Account for '> ' prompt
+	and a, 0x00f0	; Extract 0x00f0 ie 0x8030 -> 0x30
+	
+	sub [0x1335], 1	; Dec video pointer
+
+	set b, [0x1335] ; Set b to new pos
+	sub b, 2		; Account for '> ' prompt
+	and b, 0x00f0	; Extract 0x00f0 ie 0x802f -> 0x20
+	
+	ifn a, b				; Check if a isn't in the same region as b
+		set pc, side_check	; If it isn't, run side check because the vid pointer migth be at the right side
+	
+	:cont_bs
+	sub [0x1337], 1	; Delete last char
+	
+	set a, [0x1337]
+	set [a], 0
+
+	set a, 0
+	jsr printchar	  ; printchar(0)
+	sub [0x1335], 1
+	
+	:end_bs
+	set [0x9000], 0
+	set pc, kbloop
+
+
+	:side_check
+		div a, 0x10				; ie 0x30 -> 0x3
+		mod a, 0x2				; ie 0x3 -> 1
+		ife a, 1				; If a isn't an even number cont_bs
+			set pc, cont_bs
+
+		add [0x1335], 1			; Put video pointer back
+		set pc, end_bs			; End backspace
+
+:reset
+	set [inputbuffer], 0x6000   ; reset pointer
+	set a, [inputbuffer]        ; dereference
+	set [a], 0	                ; reset string
+	set [0x9000], 0	            ; reset keyboard
+	set pc, pop
+
+:enteredcommand
+	set a, open
+	set b, [os_input]
+	jsr [kern_startswith]		; kern_startswith(echo, 0x1338)
+	ife y, 1
+		set pc, load_openf
+
+	set a, echo
+	set b, [os_input]
+	jsr [kern_startswith]		; kern_startswith(echo, 0x1338)
+	ife y, 1
+		set pc, load_echof
+
+	set a, reddit
+	set b, [os_input]
+	jsr [kern_strcmp]			 ; kern_strcmp(reddit, 0x1338)
+	ife y, 1
+		set pc, redditf
+
+	set a, date
+	set b, [os_input]
+	jsr [kern_strcmp]			; kern_strcmp(date, 0x1338)
+	ife y, 1
+		set pc, datef
+
+	set a, clean
+	set b, [os_input]
+	jsr [kern_strcmp]			; kern_strcmp(date, 0x1338)
+	ife y, 1
+		set pc, load_cleanf
+
+	set a, vers
+	set b, [os_input]
+	jsr [kern_strcmp]			; kern_strcmp(vers, 0x1338)
+	ife y, 1
+		set pc, versionf
+
+	ifn a, 1
+	set pc, unrecognizedf
+
+	:enterdone
+		jsr reset
+		set pc, inputready
+
+
+:load_openf
+    set a, openf_program
+    set b, 0x3000
+    set c, 136
+    
+    jsr [kern_memcpy]
+    set pc, 0x3000
+
+:load_echof
+    set a, echof_program
+    set b, 0x3000
+    set c, 39
+    
+    jsr [kern_memcpy]
+    set pc, 0x3000
+    
+:load_cleanf
+    set a, cleanf_program
+    set b, 0x3000
+    set c, 39
+    
+    jsr [kern_memcpy]
+    set pc, 0x3000
+
+:versionf
+	jsr [kern_newline]
+	jsr reset
+	set a, 1			  ; return 1
+	set pc, main
+
+:unrecognizedf
+	jsr [kern_newline]
+	set a, unrecognized
+	jsr [kern_print]
+	set a, [os_input]
+	jsr [kern_print]
+	set a, unrecognizedEnd
+	jsr [kern_printnl]
+
+	set a, 1			   ; return 1
+	set pc, enterdone
+
+:redditf
+	jsr [kern_printnl]
+	set a, redditoutput
+	jsr [kern_printnl]
+	set a, 1			   ; return 1
+	set pc, enterdone
+
+:datef
+	jsr [kern_printnl]
+	set a, dateoutput
+	jsr [kern_printnl]
+	set a, 1			   ; return 1
+	set pc, enterdone
+
+:openf_program .incbin "bin/openf_trim.bin" LE
+:echof_program .incbin "bin/echof_trim.bin" LE
+:cleanf_program .incbin "bin/cleanf_trim.bin" LE

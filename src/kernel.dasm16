@@ -1,0 +1,274 @@
+set pc, boot
+
+;; BEGIN JUMP TABLE
+:kern_return       		; 0x002
+SET PC, PC         		; NOP (reserved)
+:kern_strcmp 			; 0x003
+SET PC, strcmp
+:kern_startswith 		; 0x005
+SET PC, startswith
+:kern_strlen			; 0x007
+SET PC, strlen
+:kern_strcat			; 0x009
+SET PC, strcat
+:kern_print				; 0x00B
+SET PC, print
+:kern_printnl			; 0x00D
+SET PC, printnl
+:kern_printchar			; 0x00F
+SET PC, printchar
+:kern_newline			; 0x011
+SET PC, newline
+:kern_scroll			; 0x013
+SET PC, scroll
+:kern_clear		        ; 0x015
+SET PC, clearScreen
+:kern_vidmem            ; 0x017
+DAT 0x8000
+:kern_backspace         ; 0x018      DATs only use one word
+SET PC, backspace
+:kern_memcpy			; 0x01A
+SET PC, memcpy
+
+:fortyosmem dat 0x1000
+:loadingmsg dat "Loading 0x42c...", 0
+
+:boot
+	set [kern_vidmem], 0x8000
+	set a, loadingmsg
+	jsr printnl
+
+	set a, fortytwoc
+	set b, [fortyosmem]
+	set c, 1244; length
+	jsr memcpy
+
+	set pc, 0x1000
+
+
+; ===== STANDARD 0x42c LIBRARY ====
+
+:backspace
+	sub [kern_vidmem], 1
+	set a, 0
+	jsr printchar
+	sub [kern_vidmem], 1
+	set pc, pop
+
+:memcpy
+	set i, 0
+	:memcpy_loop
+		ife i, c
+			set pc, pop
+     	set [b], [a]
+     	add a, 1
+     	add b, 1
+     	add i, 1
+     	set pc, memcpy_loop
+
+:startswith
+	set y, 0
+
+	ife [a], 0
+		set pc, startswith_end_success
+
+
+	ife [a], [b]
+		jsr checkzero
+
+	ifn [a], [b]
+		set pc, pop
+
+	ife y, 1
+		set pc, pop
+
+	add a, 1
+	add b, 1
+	set pc, startswith
+
+	:startswith_end_success
+		set y, 1
+		set pc, pop
+
+:strlen
+	set y, 0
+
+	:strlen_begin
+		ife [a], 0
+		set pc, strlen_end
+
+		add y, 1
+		add a, 1
+		set pc, strlen_begin
+
+	:strlen_end
+		set a, y
+		set pc, pop
+
+
+:strcmp
+	set y, 0
+
+	ife [a], [b]
+		jsr checkzero
+
+	ife y, 1
+		set pc, pop
+
+	ifn [a], [b]
+		set pc, pop
+
+	add a, 1
+	add b, 1
+	set pc, strcmp
+
+:checkzero
+	ife [a], 0
+		set y, 1
+	set pc, pop
+
+:strcat
+	set [a], b
+	add a, 1
+	add b, 1
+	set [a], 0
+	set pc, pop
+
+
+:printnl   ; shortcut
+	jsr print
+	jsr newline
+	set pc, pop
+
+:print
+	set i, a
+	:doprint
+		ife [i], 0
+			set pc, pop
+		set a, [i]
+		jsr printchar
+		add i, 1
+		set pc, doprint
+
+:printchar
+	ifg [kern_vidmem], 0x81ff ; end of vidmem
+		jsr scroll
+	set b, [kern_vidmem]
+	bor a, 0xf000 ; color :D
+	set [b], a
+	add [kern_vidmem], 1
+	set pc, pop
+
+:newline
+	set i, [kern_vidmem]
+	mod i, 32 ; width
+	set z, 32
+	sub z, i
+	add [kern_vidmem], z
+	set pc, pop
+
+:scroll
+	set x, 0x8000
+	set z, 0x8020
+	
+	set j, sp			; nifty stack pointer abuse :P
+	set sp, 0x8000
+	
+	:scroll_loop
+		set pop, [z]
+		set pop, [1+z]
+		set pop, [2+z]
+		set pop, [3+z]
+		set pop, [4+z]
+		set pop, [5+z]
+		set pop, [6+z]
+		set pop, [7+z]
+		set pop, [8+z]
+		set pop, [9+z]
+		set pop, [10+z]
+		set pop, [11+z]
+		set pop, [12+z]
+		set pop, [13+z]
+		set pop, [14+z]
+		set pop, [15+z]
+		set pop, [16+z]
+		set pop, [17+z]
+		set pop, [18+z]
+		set pop, [19+z]
+		set pop, [20+z]
+		set pop, [21+z]
+		set pop, [22+z]
+		set pop, [23+z]
+		set pop, [24+z]
+		set pop, [25+z]
+		set pop, [26+z]
+		set pop, [27+z]
+		set pop, [28+z]
+		set pop, [29+z]
+		set pop, [30+z]
+		set pop, [31+z] ; unrolled loop. So sue me :P
+		
+		add z, 32
+		ifg z, 0x8231
+			set pc, scroll_end
+		set pc, scroll_loop
+
+	:scroll_end
+		set sp, j
+		set [kern_vidmem], 0x81e0
+		set pc, pop
+
+
+:clearScreen
+	set i, sp
+	set sp, [kern_vidmem]
+		:clearScreen_loop
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		set push, 0
+		ifg 0x8000, sp
+			set pc, clearScreen_done
+		set pc, clearScreen_loop
+
+		:clearScreen_done
+		set [kern_vidmem], 0x8000
+		set sp, i
+		set pc, pop
+		
+		
+		
+		
+; HARDCODED OS (will be loaded from disc when IO is announced)
+:fortytwoc .incbin "0x42c_trim.bin" LE
+
+
+
