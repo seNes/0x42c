@@ -47,7 +47,7 @@ SET PC, clearScreen
 
 :main
 	set a, version
-	jsr printnl	  ; printnl(version)
+	jsr printnl	  	; printnl(version)
 
 :inputready
 	set a, input
@@ -69,30 +69,57 @@ SET PC, clearScreen
 	set a, [0x1337] ; 0x1337 is the pointer to my buffer string
 	set b, [0x9000]
 	jsr strcat		; strcat([0x1337], [0x9000])
+	
 	add [0x1337], 1
-
 	set [0x9000], 0
 
 	set pc, kbloop
 
-:backspace
-	sub [0x1335], 1	; video pointer
-	sub [0x1337], 1	; delete last char
 
+
+:backspace
+	set a, [0x1335]	; Set a to current pos
+	sub a, 2		; Account for '> ' prompt
+	and a, 0x00f0	; Extract 0x00f0 ie 0x8030 -> 0x30
+	
+	sub [0x1335], 1	; Dec video pointer
+
+	set b, [0x1335] ; Set b to new pos
+	sub b, 2		; Account for '> ' prompt
+	and b, 0x00f0	; Extract 0x00f0 ie 0x802f -> 0x20
+	
+	ifn a, b				; Check if a isn't in the same region as b
+		set pc, side_check	; If it isn't, run side check because the vid pointer migth be at the right side
+	
+	:cont_bs
+	sub [0x1337], 1	; Delete last char
+	
 	set a, [0x1337]
 	set [a], 0
 
 	set a, 0
 	jsr printchar	  ; printchar(0)
 	sub [0x1335], 1
+	
+	:end_bs
 	set [0x9000], 0
 	set pc, kbloop
 
+
+	:side_check
+		div a, 0x10				; ie 0x30 -> 0x3
+		mod a, 0x2				; ie 0x3 -> 1
+		ife a, 1				; If a isn't an even number cont_bs
+			set pc, cont_bs
+
+		add [0x1335], 1			; Put video pointer back
+		set pc, end_bs			; End backspace
+
 :reset
-	set [0x1337], 0x1338 ; reset pointer
-	set [0x1338], 0	  ; reset string
-	set [0x9000], 0	  ; reset keyboard
-	set [0x1336], 0	  ; reset command recognized
+	set [0x1337], 0x1338 	; reset pointer
+	set [0x1338], 0	  		; reset string
+	set [0x9000], 0	  		; reset keyboard
+	set [0x1336], 0	 		; reset command recognized
 	set pc, pop
 
 :enteredcommand
@@ -138,8 +165,7 @@ SET PC, clearScreen
 	jsr newline
 	set a, echo
 	jsr strlen
-	add a, 1	; +1 to strlen,
-						; for the space
+	add a, 1	; +1 to strlen, for the space
 
 	set b, 0x1338
 	add b, a 	; start at `strlen'
@@ -159,7 +185,7 @@ SET PC, clearScreen
 :versionf
 	jsr newline
 	jsr reset
-	set a, 1			  ; return 1
+	set a, 1		; return 1
 	set pc, main
 
 :unrecognizedf
@@ -280,7 +306,7 @@ SET PC, clearScreen
 	ifg [0x1335], 0x81ff ; end of vidmem
 		jsr scroll
 	set b, [0x1335]
-	bor a, 0xf000 ; color :D
+	bor a, 0xf000 		 ; color :D
 	set [b], a
 	add [0x1335], 1
 	set pc, pop
@@ -294,12 +320,10 @@ SET PC, clearScreen
 	set pc, pop
 
 :scroll
-	set x, 0x8000
-	set z, 0x8020
-
 	set j, sp			; nifty stack pointer abuse :P
 	set sp, 0x8000
-
+	set z, 0x8020
+	
 	:scroll_loop
 		set pop, [z]
 		set pop, [1+z]
